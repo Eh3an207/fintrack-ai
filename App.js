@@ -294,4 +294,38 @@ const styles = StyleSheet.create({
   modalCancelText: { color: '#94a3b8', fontWeight: 'bold' },
   modalSave: { backgroundColor: '#2563eb', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
   modalSaveText: { color: '#ffffff', fontWeight: 'bold' },
+  categoryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  categoryChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    marginHorizontal: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  categoryChipActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#3B82F6',
+  },
+  categoryIcon: {
+    fontSize: 13,
+    marginRight: 4,
+  },
+  categoryLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  categoryLabelActive: {
+    color: '#FFFFFF',
+  },
+
 });
