@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "fin-asset-tracker",
+    "slug": "fin-asset-tracker-v2",
+    "owner": "eh3an206",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.eh3an206.fintrackai"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1176a1a3-1d47-4df1-9238-ff27705d27e8"
+      }
+    }
+  }
+}

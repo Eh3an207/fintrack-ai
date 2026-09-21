@@ -1,0 +1,297 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, TextInput, Alert, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Currency configurations and rates relative to USD (Base: USD = 1.0)
+const DEFAULT_RATES = {
+  USD: { symbol: '$', rate: 1.0, name: 'USD', decimals: 2 },
+  EUR: { symbol: '€', rate: 0.92, name: 'EUR', decimals: 2 },
+  GBP: { symbol: '£', rate: 0.78, name: 'GBP', decimals: 2 },
+  JPY: { symbol: '¥', rate: 155.0, name: 'JPY', decimals: 0 },
+  CNY: { symbol: '¥', rate: 7.24, name: 'CNY', decimals: 2 },
+  IRT: { symbol: 'Toman', rate: 90000.0, name: 'Toman', decimals: 0 },
+};
+
+const parseAmount = (val) => {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  return parseFloat(cleaned) || 0;
+};
+
+export default function App() {
+  const [assets, setAssets] = useState([]);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  
+  // Currency State
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [tomanRate, setTomanRate] = useState(90000);
+  const [isRateModalOpen, setIsRateModalOpen] = useState(false);
+  const [tempRateInput, setTempRateInput] = useState('90000');
+
+  useEffect(() => {
+    const loadStoredData = async () => {
+      try {
+        const savedAssets = await AsyncStorage.getItem('assets');
+        if (savedAssets) {
+          const parsed = JSON.parse(savedAssets);
+          setAssets(parsed.map(i => ({ ...i, amount: parseAmount(i.amount) })));
+        }
+        const savedRate = await AsyncStorage.getItem('custom_toman_rate');
+        if (savedRate) {
+          const r = parseFloat(savedRate);
+          if (!isNaN(r) && r > 0) {
+            setTomanRate(r);
+            setTempRateInput(String(r));
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadStoredData();
+  }, []);
+
+  const saveAssets = async (newAssets) => {
+    try {
+      await AsyncStorage.setItem('assets', JSON.stringify(newAssets));
+      setAssets(newAssets);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpdateTomanRate = async () => {
+    const parsed = parseFloat(tempRateInput);
+    if (isNaN(parsed) || parsed <= 0) {
+      Alert.alert('Invalid Rate', 'Please enter a valid rate greater than 0');
+      return;
+    }
+    setTomanRate(parsed);
+    await AsyncStorage.setItem('custom_toman_rate', String(parsed));
+    setIsRateModalOpen(false);
+  };
+
+  // Convert USD base value to active currency and format
+  const formatCurrency = (usdVal) => {
+    const val = Number(usdVal) || 0;
+    const currentRate = selectedCurrency === 'IRT' ? tomanRate : DEFAULT_RATES[selectedCurrency].rate;
+    const converted = val * currentRate;
+    const decimals = DEFAULT_RATES[selectedCurrency].decimals;
+
+    const formattedNumber = converted.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+
+    if (selectedCurrency === 'IRT') {
+      return `${formattedNumber} Toman`;
+    }
+    return `${DEFAULT_RATES[selectedCurrency].symbol}${formattedNumber}`;
+  };
+
+  const totalNetWorthUSD = useMemo(() => {
+    return assets.reduce((sum, item) => sum + parseAmount(item.amount), 0);
+  }, [assets]);
+
+  const addAsset = () => {
+    const trimmedName = name.trim();
+    const numericAmount = parseFloat(amount);
+
+    if (!trimmedName || isNaN(numericAmount) || numericAmount <= 0) {
+      Alert.alert('Invalid Input', 'Please enter a valid asset name and positive USD amount.');
+      return;
+    }
+
+    const newAsset = {
+      id: Date.now().toString(),
+      name: trimmedName,
+      amount: numericAmount, // Stored consistently in USD
+      icon: '💰'
+    };
+
+    saveAssets([...assets, newAsset]);
+    setName('');
+    setAmount('');
+  };
+
+  const deleteAsset = (id) => {
+    Alert.alert('Delete Asset', 'Are you sure you want to remove this?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => saveAssets(assets.filter(a => a.id !== id)) }
+    ]);
+  };
+
+  const currencyKeys = Object.keys(DEFAULT_RATES);
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#090d16" />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        
+        {/* Header with Title & Custom Rate Button */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.brandTitle}>Fin<Text style={styles.brandAccent}>Track</Text></Text>
+            <Text style={styles.subTitle}>Multi-Currency Asset Manager</Text>
+          </View>
+          <TouchableOpacity style={styles.rateButton} onPress={() => setIsRateModalOpen(true)}>
+            <Text style={styles.rateButtonText}>⚙️ 1$ = {tomanRate.toLocaleString()} T</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Currency Switcher Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.currencyScroll}>
+          {currencyKeys.map(cur => (
+            <TouchableOpacity
+              key={cur}
+              style={[styles.curTab, selectedCurrency === cur && styles.curTabActive]}
+              onPress={() => setSelectedCurrency(cur)}
+            >
+              <Text style={[styles.curTabText, selectedCurrency === cur && styles.curTabTextActive]}>
+                {cur}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Total Net Worth Banner */}
+        <View style={styles.balanceCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.balanceLabel}>Total Net Worth</Text>
+            <Text style={styles.badge}>{selectedCurrency}</Text>
+          </View>
+          <Text style={styles.balanceAmount}>{formatCurrency(totalNetWorthUSD)}</Text>
+          {selectedCurrency !== 'USD' && (
+            <Text style={styles.baseHint}>Base: ${totalNetWorthUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+          )}
+        </View>
+
+        {/* Add Asset Form */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Asset Name (e.g. BTC, Gold, Cash)"
+            placeholderTextColor="#64748b"
+            value={name}
+            onChangeText={setName}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Value in Base USD ($)"
+            placeholderTextColor="#64748b"
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={setAmount}
+          />
+          <TouchableOpacity style={styles.actionBtn} onPress={addAsset}>
+            <Text style={styles.actionBtnText}>Add Asset</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Asset List */}
+        <Text style={styles.sectionTitle}>Asset Allocation (Hold to delete)</Text>
+
+        {assets.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No assets yet. Add assets to see portfolio allocation.</Text>
+          </View>
+        ) : (
+          assets.map(item => {
+            const itemVal = parseAmount(item.amount);
+            const percentage = totalNetWorthUSD > 0 ? ((itemVal / totalNetWorthUSD) * 100).toFixed(1) : '0.0';
+
+            return (
+              <TouchableOpacity
+                key={item.id}
+                onLongPress={() => deleteAsset(item.id)}
+                style={styles.assetRow}
+              >
+                <View style={styles.assetLeft}>
+                  <Text style={styles.assetIcon}>{item.icon || '💰'}</Text>
+                  <View>
+                    <Text style={styles.assetName}>{item.name}</Text>
+                    <Text style={styles.assetChange}>{percentage}% of portfolio</Text>
+                  </View>
+                </View>
+                <Text style={styles.assetAmount}>{formatCurrency(itemVal)}</Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
+      </ScrollView>
+
+      {/* Modal to update dynamic Toman/USD rate */}
+      <Modal visible={isRateModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Set Market Toman Rate</Text>
+            <Text style={styles.modalDesc}>Set 1 USD exchange rate in Tomans (IRT) to adapt to free market volatility:</Text>
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              value={tempRateInput}
+              onChangeText={setTempRateInput}
+              placeholder="e.g. 92000"
+              placeholderTextColor="#64748b"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setIsRateModalOpen(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSave} onPress={handleUpdateTomanRate}>
+                <Text style={styles.modalSaveText}>Save Rate</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#090d16' },
+  scroll: { padding: 20, paddingTop: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+  brandTitle: { fontSize: 24, fontWeight: 'bold', color: '#ffffff' },
+  brandAccent: { color: '#38bdf8' },
+  subTitle: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  rateButton: { backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderColor: '#334155', borderWidth: 1 },
+  rateButtonText: { color: '#38bdf8', fontSize: 12, fontWeight: 'bold' },
+  currencyScroll: { marginBottom: 16 },
+  curTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, backgroundColor: '#1e293b', marginRight: 8, borderWidth: 1, borderColor: '#334155' },
+  curTabActive: { backgroundColor: '#2563eb', borderColor: '#38bdf8' },
+  curTabText: { color: '#94a3b8', fontSize: 13, fontWeight: 'bold' },
+  curTabTextActive: { color: '#ffffff' },
+  balanceCard: { backgroundColor: '#1e293b', padding: 22, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#334155' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  balanceLabel: { color: '#94a3b8', fontSize: 14 },
+  badge: { backgroundColor: '#090d16', color: '#38bdf8', fontSize: 12, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, fontWeight: 'bold' },
+  balanceAmount: { color: '#ffffff', fontSize: 30, fontWeight: 'bold', marginTop: 6 },
+  baseHint: { color: '#64748b', fontSize: 12, marginTop: 4 },
+  inputContainer: { marginBottom: 20 },
+  input: { backgroundColor: '#1e293b', color: '#ffffff', padding: 15, borderRadius: 12, marginBottom: 10, borderColor: '#334155', borderWidth: 1 },
+  sectionTitle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', marginBottom: 14 },
+  assetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111827', padding: 16, borderRadius: 14, marginBottom: 10, borderWidth: 1, borderColor: '#1f2937' },
+  assetLeft: { flexDirection: 'row', alignItems: 'center' },
+  assetIcon: { fontSize: 22, marginRight: 12 },
+  assetName: { color: '#f3f4f6', fontSize: 15, fontWeight: '600' },
+  assetChange: { color: '#38bdf8', fontSize: 12 },
+  assetAmount: { color: '#ffffff', fontSize: 15, fontWeight: 'bold' },
+  actionBtn: { backgroundColor: '#2563eb', padding: 15, borderRadius: 12, alignItems: 'center' },
+  actionBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  emptyState: { padding: 24, alignItems: 'center' },
+  emptyText: { color: '#64748b', fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#1e293b', width: '100%', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#334155' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#ffffff', marginBottom: 8 },
+  modalDesc: { color: '#94a3b8', fontSize: 13, marginBottom: 16, lineHeight: 18 },
+  modalInput: { backgroundColor: '#090d16', color: '#ffffff', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#475569', fontSize: 16, marginBottom: 20 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  modalCancel: { paddingHorizontal: 16, paddingVertical: 10, marginRight: 10 },
+  modalCancelText: { color: '#94a3b8', fontWeight: 'bold' },
+  modalSave: { backgroundColor: '#2563eb', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  modalSaveText: { color: '#ffffff', fontWeight: 'bold' },
+});
